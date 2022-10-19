@@ -13,6 +13,9 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -25,10 +28,12 @@ final class TodoControllerTest {
     MockMvc mockMvc;
     @Autowired
     ObjectMapper objectMapper;
+    @Autowired
+    TodoRepository todoRepository;
 
     private TodoItem parseResultToTodoItem(ResultActions resultActions) {
         try {
-            var contentAsString = resultActions.andReturn().getResponse().getContentAsString();
+            final var contentAsString = resultActions.andReturn().getResponse().getContentAsString();
             return objectMapper.readValue(contentAsString, TodoItem.class);
         } catch (Exception exception) {
             throw new RuntimeException("Error trying to parse result to todo item: " + exception.getMessage());
@@ -45,14 +50,30 @@ final class TodoControllerTest {
 
     @Test
     void testCreate() throws Exception {
-        var request = new TodoItem("Integration Test", "Learning integration test.");
-        var resultActions = mockMvc.perform(post("/todo")
+        final var request = new TodoItem("Integration Test", "Learning integration test.");
+        final var resultActions = mockMvc.perform(post("/todo")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(parseObjToByteArray(request)))
             .andExpect(status().isCreated());
-        var todoItem = parseResultToTodoItem(resultActions);
+        final var todoItem = parseResultToTodoItem(resultActions);
 
         assertThat(todoItem.getId()).isGreaterThan(0);
         assertThat(todoItem.getName()).isEqualTo(request.getName());
+    }
+
+    @Test
+    void testComplete() throws Exception {
+        final var initialTodoItem = new TodoItem("Integration Test", "Learning integration test.");
+        todoRepository.save(initialTodoItem);
+
+        mockMvc.perform(patch(String.format("/todo/%d/complete",
+                initialTodoItem.getId())).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isNoContent());
+
+        final var updatedTodoItem = todoRepository.findById(initialTodoItem.getId())
+            .orElseThrow(TodoService.TodoItemNotFoundException::new);
+
+        assertFalse(initialTodoItem.isDone());
+        assertTrue(updatedTodoItem.isDone());
     }
 }
